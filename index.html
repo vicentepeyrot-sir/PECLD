@@ -164,29 +164,38 @@
   <div id="loader-msg">Carregando dados dos arquivos PECLD…</div>
 </div>
 
-<!-- MODAL TOKEN GITHUB -->
-<div class="modal-bg hidden" id="modal-token">
+<!-- MODAL ATUALIZAR DADOS -->
+<div class="modal-bg hidden" id="modal-atualizar">
   <div class="modal" style="width:440px">
-    <h2>Token GitHub — Atualizar Dados</h2>
-    <div class="modal-sub">Necessário apenas uma vez. Salvo no seu navegador.</div>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.7">
-      Crie um <strong style="color:var(--text)">Fine-grained token</strong> em:<br>
-      <code style="font-size:11px;color:var(--cyan)">github.com → Settings → Developer settings → Personal access tokens → Fine-grained tokens</code><br><br>
-      Permissões necessárias:<br>
-      • Repository: <strong style="color:var(--text)">PECLD</strong><br>
-      • Actions → <strong style="color:var(--text)">Read and write</strong>
+    <h2>Atualizar Dados</h2>
+    <div class="modal-sub">Informe o período e clique em Iniciar.</div>
+
+    <div style="display:flex;gap:12px;margin-bottom:14px">
+      <div style="flex:1">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">Data Início</div>
+        <input type="date" id="atualizar-ini" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;outline:none;color-scheme:dark" />
+      </div>
+      <div style="flex:1">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">Data Fim</div>
+        <input type="date" id="atualizar-fim" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;outline:none;color-scheme:dark" />
+      </div>
     </div>
-    <input
-      type="password"
-      id="token-input"
-      class="tbl-search"
-      style="width:100%;font-size:13px;padding:8px 12px;margin-bottom:4px"
-      placeholder="github_pat_..."
-    />
-    <div id="token-erro" style="font-size:11px;color:var(--red);min-height:16px;margin-bottom:8px"></div>
+
+    <div id="atualizar-token-area" class="hidden" style="margin-bottom:10px">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px">GitHub Token <span style="color:var(--red)">*</span></div>
+      <input type="password" id="token-input" class="tbl-search"
+        style="width:100%;font-size:13px;padding:7px 12px"
+        placeholder="github_pat_..." />
+      <div style="font-size:10px;color:var(--muted);margin-top:4px">
+        Fine-grained token com permissão <strong style="color:var(--text)">Actions → Read and write</strong> no repo PECLD.
+        Salvo no navegador após a primeira vez.
+      </div>
+    </div>
+
+    <div id="atualizar-erro" style="font-size:11px;color:var(--red);min-height:16px;margin-bottom:8px"></div>
     <div class="modal-btns">
-      <button class="btn-save" onclick="confirmarToken()">Salvar e Acionar</button>
-      <button class="btn-cancel" onclick="fecharModalToken()">Cancelar</button>
+      <button class="btn-save" onclick="confirmarAtualizar()">▶ Iniciar</button>
+      <button class="btn-cancel" onclick="fecharModalAtualizar()">Cancelar</button>
     </div>
   </div>
 </div>
@@ -1131,33 +1140,61 @@ async function resetSupers() {
 // ATUALIZAR DADOS
 // ════════════════════════════════════════════════════════════
 // ════════════════════════════════════════════════════════════
-// MODAL TOKEN GITHUB
+// MODAL ATUALIZAR DADOS (datas + token)
 // ════════════════════════════════════════════════════════════
-const GH_REPO = 'vicentepeyrot-sir/PECLD';
+const GH_REPO  = 'vicentepeyrot-sir/PECLD';
 const TOKEN_KEY = 'pecld_gh_token';
 
-function abrirModalToken() {
+function _hoje()  { return new Date().toISOString().slice(0,10); }
+function _anoIni(){ return new Date().getFullYear() + '-01-01'; }
+
+function abrirModalAtualizar() {
+  // Pré-preenche datas
+  document.getElementById('atualizar-ini').value = _anoIni();
+  document.getElementById('atualizar-fim').value = _hoje();
+  document.getElementById('atualizar-erro').textContent = '';
+
+  // Mostra campo de token só se ainda não estiver salvo
+  const temToken = !!localStorage.getItem(TOKEN_KEY);
+  document.getElementById('atualizar-token-area').classList.toggle('hidden', temToken);
   document.getElementById('token-input').value = '';
-  document.getElementById('token-erro').textContent = '';
-  document.getElementById('modal-token').classList.remove('hidden');
-  setTimeout(() => document.getElementById('token-input').focus(), 50);
-}
-function fecharModalToken() {
-  document.getElementById('modal-token').classList.add('hidden');
+
+  document.getElementById('modal-atualizar').classList.remove('hidden');
+  // Foca no campo de data inicial
+  setTimeout(() => document.getElementById('atualizar-ini').focus(), 50);
 }
 
-async function confirmarToken() {
-  const token = document.getElementById('token-input').value.trim();
-  if (!token) { document.getElementById('token-erro').textContent = 'Informe o token.'; return; }
-  document.getElementById('token-erro').textContent = '';
-  const ok = await dispararWorkflow(token);
+function fecharModalAtualizar() {
+  document.getElementById('modal-atualizar').classList.add('hidden');
+}
+
+async function confirmarAtualizar() {
+  const desde = document.getElementById('atualizar-ini').value;
+  const ate   = document.getElementById('atualizar-fim').value;
+  const erro  = document.getElementById('atualizar-erro');
+
+  if (!desde || !ate) { erro.textContent = 'Preencha as duas datas.'; return; }
+  if (desde > ate)    { erro.textContent = 'A data inicial não pode ser maior que a final.'; return; }
+  erro.textContent = '';
+
+  // Obtém token (salvo ou recém digitado)
+  let token = localStorage.getItem(TOKEN_KEY);
+  if (!token) {
+    token = document.getElementById('token-input').value.trim();
+    if (!token) { erro.textContent = 'Informe o GitHub Token.'; return; }
+  }
+
+  fecharModalAtualizar();
+  const ok = await dispararWorkflow(token, desde, ate);
   if (ok) {
     localStorage.setItem(TOKEN_KEY, token);
-    fecharModalToken();
+  } else if (!localStorage.getItem(TOKEN_KEY)) {
+    // Token recém digitado falhou — reabre modal com erro
+    abrirModalAtualizar();
   }
 }
 
-async function dispararWorkflow(token) {
+async function dispararWorkflow(token, desde, ate) {
   const btn = document.getElementById('btn-atualizar');
   btn.disabled = true;
   btn.textContent = '⏳ Acionando…';
@@ -1171,34 +1208,35 @@ async function dispararWorkflow(token) {
           'Accept': 'application/vnd.github+json',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ ref: 'main', inputs: {} }),
+        body: JSON.stringify({ ref: 'main', inputs: { desde: desde||'', ate: ate||'' } }),
       }
     );
+
     if (resp.status === 204) {
-      btn.textContent = '✔ Workflow iniciado!';
-      setTimeout(() => { btn.textContent = '⬇ Atualizar Dados'; btn.disabled = false; }, 4000);
+      btn.textContent = '✔ Iniciado! Aguarde ~5 min';
+      setTimeout(() => { btn.textContent = '⬇ Atualizar Dados'; btn.disabled = false; }, 6000);
       return true;
     }
+
     if (resp.status === 401 || resp.status === 403) {
       localStorage.removeItem(TOKEN_KEY);
-      if (document.getElementById('modal-token').classList.contains('hidden')) {
-        document.getElementById('token-erro').textContent = '';
-        abrirModalToken();
-        document.getElementById('token-erro').textContent = 'Token inválido ou sem permissão. Verifique e tente novamente.';
-      } else {
-        document.getElementById('token-erro').textContent = 'Token inválido ou sem permissão.';
-      }
+      document.getElementById('atualizar-erro').textContent = 'Token inválido ou expirado. Informe novamente.';
+      document.getElementById('atualizar-token-area').classList.remove('hidden');
+      document.getElementById('modal-atualizar').classList.remove('hidden');
       btn.textContent = '⬇ Atualizar Dados';
       btn.disabled = false;
       return false;
     }
+
     const data = await resp.json().catch(() => ({}));
-    document.getElementById('token-erro').textContent = 'Erro: ' + (data.message || `HTTP ${resp.status}`);
+    document.getElementById('atualizar-erro').textContent = 'Erro: ' + (data.message || `HTTP ${resp.status}`);
+    document.getElementById('modal-atualizar').classList.remove('hidden');
     btn.textContent = '⬇ Atualizar Dados';
     btn.disabled = false;
     return false;
   } catch(e) {
-    document.getElementById('token-erro').textContent = 'Erro de conexão com a API do GitHub.';
+    document.getElementById('atualizar-erro').textContent = 'Erro de conexão com a API do GitHub.';
+    document.getElementById('modal-atualizar').classList.remove('hidden');
     btn.textContent = '⬇ Atualizar Dados';
     btn.disabled = false;
     return false;
@@ -1207,16 +1245,11 @@ async function dispararWorkflow(token) {
 
 async function atualizarDados() {
   if (IS_STATIC) {
-    const token = localStorage.getItem(TOKEN_KEY);
-    if (token) {
-      await dispararWorkflow(token);
-    } else {
-      abrirModalToken();
-    }
+    abrirModalAtualizar();
     return;
   }
 
-  // Modo local (Flask)
+  // Modo local (Flask) — abre o escolher_datas.py
   const btn = document.getElementById('btn-atualizar');
   btn.disabled = true;
   btn.textContent = '⏳ Abrindo…';
