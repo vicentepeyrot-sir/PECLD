@@ -2,8 +2,8 @@ name: Atualizar Dados PECLD
 
 on:
   schedule:
-    # Roda de Seg a Sex às 09:00 horário de Brasília (UTC-3 = 12:00 UTC)
-    - cron: '0 12 * * 1-5'
+    # Roda todos os dias às 22:00 horário de Brasília (UTC-3 = 01:00 UTC do dia seguinte)
+    - cron: '0 1 * * *'
   # Permite disparo manual pelo botão "Run workflow" na aba Actions do GitHub
   workflow_dispatch:
     inputs:
