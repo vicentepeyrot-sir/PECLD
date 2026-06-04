@@ -1246,6 +1246,21 @@ async function atualizarDados() {
 // ════════════════════════════════════════════════════════════
 // INIT
 // ════════════════════════════════════════════════════════════
+
+// Lê token da URL (?token=... ou #token=...) na primeira configuração.
+// O token é salvo no localStorage e removido da URL imediatamente.
+if (IS_STATIC) {
+  const urlParams = new URLSearchParams(window.location.search);
+  const hashParams = new URLSearchParams(window.location.hash.replace('#',''));
+  const tokenFromUrl = urlParams.get('token') || hashParams.get('token');
+  if (tokenFromUrl) {
+    localStorage.setItem(TOKEN_KEY, tokenFromUrl);
+    // Remove o token da URL sem recarregar a página
+    const cleanUrl = window.location.pathname;
+    window.history.replaceState({}, '', cleanUrl);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', initData);
 </script>
 </body>
