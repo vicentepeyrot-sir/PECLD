@@ -90,6 +90,16 @@ jobs:
             --desde ${{ steps.periodo.outputs.inicio }} \
             --ate   ${{ steps.periodo.outputs.fim }}
 
+      # ── 6b. Salvar artefatos de diagnóstico se o download falhar ────────────
+      - name: Upload artefatos de diagnóstico (em caso de falha)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostico-selenium
+          path: TEMP/
+          if-no-files-found: ignore
+          retention-days: 3
+
       # ── 7. Processar CSVs e salvar XLSX acumulado ────────────────────────────
       - name: Processar e salvar dados (data/dados_pecld.xlsx)
         run: |

@@ -398,8 +398,60 @@ def consulta_servico_exec(driver, data_inicio=None, data_fim=None):
 
     time.sleep(5)
 
-    # Clica no botão CSV/Excel
-    driver.find_element(By.XPATH, "//*[contains(text(), 'CSV/Excel')]").click()
+    # Re-estabelece contexto do iframe antes de buscar o botão de exportar
+    # (em modo headless o iframe pode ser perdido após o submit)
+    try:
+        driver.switch_to.default_content()
+        driver.switch_to.frame(1)
+    except Exception:
+        pass
+
+    time.sleep(3)
+
+    # Salva screenshot para diagnóstico caso o botão não seja encontrado
+    screenshot_path = os.path.join(config.dir_temp, "pagina_resultado.png")
+    try:
+        driver.save_screenshot(screenshot_path)
+        logger.info(f"Screenshot salvo: {screenshot_path}")
+    except Exception:
+        pass
+
+    # Tenta localizar o botão CSV/Excel com vários seletores
+    CSV_SELECTORS = [
+        (By.XPATH, "//*[contains(text(), 'CSV/Excel')]"),
+        (By.XPATH, "//*[contains(text(), 'CSV')]"),
+        (By.XPATH, "//button[contains(@onclick, 'csv')]"),
+        (By.XPATH, "//a[contains(@href, 'csv')]"),
+        (By.XPATH, "//input[contains(@value, 'CSV')]"),
+    ]
+
+    btn_csv = None
+    for by, selector in CSV_SELECTORS:
+        try:
+            btn_csv = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((by, selector))
+            )
+            logger.info(f"Botão CSV encontrado com seletor: {selector}")
+            break
+        except TimeoutException:
+            continue
+        except Exception:
+            continue
+
+    if btn_csv is None:
+        page_source_path = os.path.join(config.dir_temp, "pagina_resultado.html")
+        try:
+            with open(page_source_path, "w", encoding="utf-8") as f:
+                f.write(driver.page_source)
+            logger.error(f"HTML da página salvo para diagnóstico: {page_source_path}")
+        except Exception:
+            pass
+        raise RuntimeError(
+            "Botão CSV/Excel não encontrado após a consulta. "
+            "Verifique pagina_resultado.png e pagina_resultado.html na pasta TEMP/"
+        )
+
+    btn_csv.click()
     time.sleep(5)
 
     window_handles = driver.window_handles
