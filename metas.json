@@ -1,0 +1,16 @@
+{
+  "IRECE - STC":                          { "seg_qui": 90385, "sexta": 56190 },
+  "ITABERABA - STC":                      { "seg_qui": 43997, "sexta":  9509 },
+  "JEQUIÉ - STC":                         { "seg_qui": 62649, "sexta": 22885 },
+  "LIVRAMENTO DE NOSSA SENHORA - STC":    { "seg_qui":  5735, "sexta":  1456 },
+  "SEABRA - STC":                         { "seg_qui": 20902, "sexta":  4416 },
+  "BARREIRAS - STC":                      { "seg_qui": 78841, "sexta": 41005 },
+  "BOM JESUS DA LAPA - STC":              { "seg_qui": 37324, "sexta": 10305 },
+  "IBOTIRAMA - STC":                      { "seg_qui": 27039, "sexta":  5063 },
+  "LUIS EDUARDO MAGALHAES - STC":         { "seg_qui": 81775, "sexta": 26981 },
+  "SANTA MARIA DA VITORIA - STC":         { "seg_qui": 29014, "sexta": 14774 },
+  "BRUMADO - STC":                        { "seg_qui": 17011, "sexta":  4159 },
+  "GUANAMBI - STC":                       { "seg_qui": 42456, "sexta":  7445 },
+  "ITAPETINGA - STC":                     { "seg_qui": 32792, "sexta":  9716 },
+  "VITÓRIA DA CONQUISTA - STC":           { "seg_qui": 88029, "sexta": 26495 }
+}

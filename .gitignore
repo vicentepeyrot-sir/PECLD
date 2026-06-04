@@ -1,0 +1,23 @@
+# Temporários de download
+TEMP/
+
+# Cache do navegador
+cache/
+
+# Arquivos de log
+app.log
+server_out.txt
+server_err.txt
+
+# Credenciais e segredos — NUNCA commitar
+chaveGoogle.json
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Dados gerados em execução local (não comprometer no repo principal)
+# (o arquivo data/dados_pecld.xlsx É commitado — é o banco de dados do projeto)

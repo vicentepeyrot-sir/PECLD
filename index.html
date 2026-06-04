@@ -1,0 +1,1151 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PECLD — Painel de Análise</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:      #0f1117;
+      --surf:    #1a1d2e;
+      --border:  #2a2d3e;
+      --text:    #e2e8f0;
+      --muted:   #8892a4;
+      --cyan:    #00d4ff;
+      --green:   #00e676;
+      --yellow:  #ffd740;
+      --red:     #ff5252;
+      --purple:  #b388ff;
+      --sw:      220px;
+    }
+    html, body { height: 100%; font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
+    .app { display: flex; height: 100vh; overflow: hidden; }
+
+    /* ── LOADER ── */
+    #loader { position: fixed; inset: 0; background: rgba(15,17,23,.92); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 999; gap: 16px; }
+    #loader.hidden { display: none; }
+    .spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--cyan); border-radius: 50%; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #loader-msg { color: var(--muted); font-size: 13px; }
+
+    /* ── SIDEBAR ── */
+    .sidebar { width: var(--sw); background: var(--surf); border-right: 1px solid var(--border); display: flex; flex-direction: column; flex-shrink: 0; overflow-y: auto; }
+    .sidebar-logo { padding: 18px 16px 12px; font-size: 17px; font-weight: 700; color: var(--cyan); border-bottom: 1px solid var(--border); }
+    .sidebar-logo span { color: var(--muted); font-weight: 400; font-size: 11px; display: block; margin-top: 2px; }
+    .nav-section { padding: 12px 16px 3px; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+    .nav-item { display: flex; align-items: center; gap: 9px; padding: 8px 16px; cursor: pointer; border-radius: 6px; margin: 1px 6px; color: var(--muted); transition: background .15s; }
+    .nav-item:hover, .nav-item.active { background: rgba(0,212,255,.09); color: var(--cyan); }
+    .nav-item svg { width: 15px; height: 15px; flex-shrink: 0; }
+    .sidebar-footer { margin-top: auto; padding: 12px 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 11px; line-height: 1.6; }
+    #files-status { color: var(--cyan); }
+
+    /* ── TOPBAR ── */
+    .topbar { background: var(--surf); border-bottom: 1px solid var(--border); padding: 9px 18px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .topbar-title { font-weight: 600; font-size: 15px; flex: 1 1 130px; }
+    .fg { display: flex; align-items: center; gap: 5px; }
+    .fg label { font-size: 11px; color: var(--muted); white-space: nowrap; }
+    select { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 5px 9px; border-radius: 6px; font-size: 12px; cursor: pointer; outline: none; max-width: 140px; }
+    select:focus { border-color: var(--cyan); }
+    input[type="date"] { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 5px 9px; border-radius: 6px; font-size: 12px; cursor: pointer; outline: none; width: 130px; color-scheme: dark; }
+    input[type="date"]:focus { border-color: var(--cyan); }
+    input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.6); cursor: pointer; }
+    .btn { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 5px 11px; border-radius: 6px; cursor: pointer; font-size: 12px; transition: all .15s; }
+    .btn:hover { border-color: var(--cyan); color: var(--cyan); }
+    .btn-reload { border-color: rgba(0,212,255,.3); color: var(--cyan); }
+    .btn-atualizar { border-color: rgba(179,136,255,.4); color: var(--purple); }
+    .btn-atualizar:hover { border-color: var(--purple); color: var(--purple); }
+    .btn-atualizar:disabled { opacity: .5; cursor: not-allowed; }
+    .badge-novo { background: var(--cyan); color: #000; font-size: 9px; padding: 1px 5px; border-radius: 4px; font-weight: 700; }
+
+    /* ── MAIN / CONTENT ── */
+    .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .content { flex: 1; overflow-y: auto; padding: 16px 18px; }
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* ── KPI GRID ── */
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(175px, 1fr)); gap: 12px; margin-bottom: 18px; }
+    .kpi { background: var(--surf); border: 1px solid var(--border); border-radius: 10px; padding: 14px; transition: border-color .2s; }
+    .kpi:hover { border-color: var(--cyan); }
+    .kpi-lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 5px; }
+    .kpi-val { font-size: 24px; font-weight: 700; line-height: 1; }
+    .kpi-sub { font-size: 11px; color: var(--muted); margin-top: 4px; }
+    .v-cyan   { color: var(--cyan); }
+    .v-green  { color: var(--green); }
+    .v-yellow { color: var(--yellow); }
+    .v-red    { color: var(--red); }
+    .v-purple { color: var(--purple); }
+
+    /* ── CHARTS ── */
+    .charts-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 14px; margin-bottom: 18px; }
+    .cc { background: var(--surf); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+    .cc-title { font-size: 13px; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+    .cw { position: relative; height: 230px; }
+
+    /* ── TABLE ── */
+    .tc { background: var(--surf); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; margin-bottom: 18px; }
+    .tc-head { padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 8px; }
+    .tc-head h3 { font-size: 13px; font-weight: 600; }
+    .tbl-search { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 5px 9px; border-radius: 6px; font-size: 12px; width: 200px; outline: none; }
+    .tbl-search:focus { border-color: var(--cyan); }
+    .tw { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { background: rgba(255,255,255,.03); padding: 8px 11px; text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); border-bottom: 1px solid var(--border); white-space: nowrap; cursor: pointer; }
+    th:hover { color: var(--cyan); }
+    td { padding: 8px 11px; border-bottom: 1px solid rgba(255,255,255,.04); white-space: nowrap; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
+    tr:hover td { background: rgba(255,255,255,.02); }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .pg { background: rgba(0,230,118,.15);  color: var(--green); }
+    .py { background: rgba(255,215,64,.15); color: var(--yellow); }
+    .pr { background: rgba(255,82,82,.15);  color: var(--red); }
+    .pc { background: rgba(0,212,255,.15);  color: var(--cyan); }
+    .pm { background: rgba(136,146,164,.15);color: var(--muted); }
+    .pp { background: rgba(179,136,255,.15);color: var(--purple); }
+    .tbl-info { padding: 8px 14px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--border); }
+
+    /* ── META BARS ── */
+    .meta-rows { display: flex; flex-direction: column; gap: 9px; padding: 4px 0; }
+    .meta-row  { display: flex; align-items: center; gap: 10px; }
+    .meta-lbl  { width: 160px; font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .meta-bg   { flex: 1; background: var(--border); border-radius: 4px; height: 16px; position: relative; overflow: hidden; }
+    .meta-fill { height: 100%; border-radius: 4px; transition: width .5s ease; }
+    .meta-pct  { width: 44px; text-align: right; font-size: 12px; font-weight: 600; }
+
+    /* ── HEATMAP ── */
+    .heatmap { display: grid; grid-template-columns: repeat(52, 1fr); gap: 2px; padding: 6px 0; }
+    .hc { aspect-ratio: 1; border-radius: 2px; cursor: pointer; }
+    .h0 { background: var(--border); }
+    .h1 { background: rgba(0,212,255,.2); }
+    .h2 { background: rgba(0,212,255,.45); }
+    .h3 { background: rgba(0,212,255,.7); }
+    .h4 { background: var(--cyan); }
+
+    /* ── MODAL DE METAS ── */
+    .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 200; display: flex; align-items: center; justify-content: center; }
+    .modal-bg.hidden { display: none; }
+    .modal { background: var(--surf); border: 1px solid var(--border); border-radius: 12px; padding: 22px; width: 500px; max-height: 80vh; overflow-y: auto; }
+    .modal h2 { font-size: 15px; margin-bottom: 4px; }
+    .modal-sub { font-size: 11px; color: var(--muted); margin-bottom: 14px; }
+    .modal-hdr { display: flex; gap: 10px; margin-bottom: 6px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+    .modal-hdr-lbl { flex: 1; }
+    .modal-hdr-val { width: 90px; text-align: right; }
+    .modal-grid { display: flex; flex-direction: column; gap: 6px; }
+    .modal-row { display: flex; align-items: center; gap: 10px; }
+    .modal-row label { flex: 1; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .modal-row input { width: 90px; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 4px 8px; border-radius: 5px; font-size: 12px; text-align: right; outline: none; }
+    .modal-row input:focus { border-color: var(--cyan); }
+    .modal-btns { display: flex; gap: 8px; margin-top: 16px; }
+    .btn-save { background: var(--cyan); color: #000; border: none; padding: 7px 18px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .btn-cancel { background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 7px 18px; border-radius: 6px; font-size: 13px; cursor: pointer; }
+
+    /* ── CONFIG SUPERINTENDÊNCIAS ── */
+    .cfg-row { display: grid; grid-template-columns: 1fr 220px 220px; align-items: center; gap: 12px; padding: 8px 14px; border-bottom: 1px solid rgba(255,255,255,.04); }
+    .cfg-row:hover { background: rgba(255,255,255,.02); }
+    .cfg-utd { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cfg-atual { font-size: 12px; }
+    .cfg-input { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 5px 9px; border-radius: 6px; font-size: 12px; width: 100%; outline: none; }
+    .cfg-input:focus { border-color: var(--cyan); }
+    .cfg-input.changed { border-color: var(--yellow); }
+
+    @media (max-width: 680px) {
+      .sidebar { display: none; }
+      .charts-row { grid-template-columns: 1fr; }
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+<!-- LOADER -->
+<div id="loader">
+  <div class="spinner"></div>
+  <div id="loader-msg">Carregando dados dos arquivos PECLD…</div>
+</div>
+
+<!-- MODAL METAS -->
+<div class="modal-bg hidden" id="modal-metas">
+  <div class="modal">
+    <h2>Configurar Metas por UTD</h2>
+    <div class="modal-sub">Metas em R$ (VALOR) · Meta diária por tipo de dia</div>
+    <div class="modal-hdr">
+      <span class="modal-hdr-lbl">UTD</span>
+      <span class="modal-hdr-val">Seg – Qui</span>
+      <span class="modal-hdr-val">Sexta</span>
+    </div>
+    <div class="modal-grid" id="modal-metas-body"></div>
+    <div class="modal-btns">
+      <button class="btn-save" onclick="saveMetas()">Salvar</button>
+      <button class="btn-cancel" onclick="closeModal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<div class="app">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">PECLD <span>Painel de Análise</span></div>
+
+    <div class="nav-section">Análise</div>
+    <div class="nav-item active" onclick="navigate('visao-geral',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      Visão Geral
+    </div>
+    <div class="nav-item" onclick="navigate('metas',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+      Metas por UTD
+    </div>
+    <div class="nav-item" onclick="navigate('calendario',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      Calendário
+    </div>
+
+    <div class="nav-section">Detalhes</div>
+    <div class="nav-item" onclick="navigate('notas',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>
+      Notas de Serviço
+    </div>
+    <div class="nav-item" onclick="navigate('coordenadores',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      Coordenadores
+    </div>
+    <div class="nav-item" onclick="navigate('retorno',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.77"/></svg>
+      Retorno de Campo
+    </div>
+
+    <div class="nav-section">Configurações</div>
+    <div class="nav-item" onclick="navigate('config',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      Superintendências
+    </div>
+
+    <div class="sidebar-footer">
+      <div id="files-status">Carregando…</div>
+      <div style="margin-top:4px">3 tabelas · 14 medidas</div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <!-- TOPBAR -->
+    <div class="topbar">
+      <div class="topbar-title" id="page-title">Visão Geral</div>
+
+      <div class="fg"><label>De</label>
+        <input type="date" id="f-data-ini" onchange="applyFilters()" /></div>
+
+      <div class="fg"><label>Até</label>
+        <input type="date" id="f-data-fim" onchange="applyFilters()" /></div>
+
+      <div class="fg"><label>Superintendência</label>
+        <select id="f-super" onchange="onSuperChange()"><option value="">Todas</option></select></div>
+
+      <div class="fg"><label>UTD</label>
+        <select id="f-utd" onchange="applyFilters()"><option value="">Todas</option></select></div>
+
+      <div class="fg"><label>Grupo</label>
+        <select id="f-grupo" onchange="applyFilters()"><option value="">Todos</option></select></div>
+
+      <button class="btn" onclick="resetFilters()">Limpar</button>
+      <button class="btn btn-reload" onclick="reloadData()">↻ Recarregar</button>
+      <button class="btn btn-atualizar" id="btn-atualizar" onclick="atualizarDados()">⬇ Atualizar Dados</button>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="content">
+
+      <!-- ═══ VISÃO GERAL ═══ -->
+      <div class="page active" id="page-visao-geral">
+        <div class="kpi-grid" id="kpi-visao"></div>
+        <div class="charts-row">
+          <div class="cc"><div class="cc-title">Notas por UTD vs Meta</div><div class="cw"><canvas id="c-utd-meta"></canvas></div></div>
+          <div class="cc"><div class="cc-title">Notas por Superintendência</div><div class="cw"><canvas id="c-super"></canvas></div></div>
+          <div class="cc"><div class="cc-title">Evolução por Data (R$)</div><div class="cw"><canvas id="c-mensal"></canvas></div></div>
+          <div class="cc"><div class="cc-title">Distribuição por Grupo de Serviço</div><div class="cw"><canvas id="c-grupo"></canvas></div></div>
+          <div class="cc"><div class="cc-title">Notas por Prioridade <span class="badge-novo">novo</span></div><div class="cw"><canvas id="c-prior"></canvas></div></div>
+        </div>
+      </div>
+
+      <!-- ═══ METAS ═══ -->
+      <div class="page" id="page-metas">
+        <div class="kpi-grid" id="kpi-metas"></div>
+        <div class="cc" style="margin-bottom:16px">
+          <div class="cc-title">
+            % Meta Atingida por UTD
+            <button class="btn" style="margin-left:auto;font-size:11px" onclick="openMetasModal()">Editar metas</button>
+          </div>
+          <div class="meta-rows" id="meta-bars"></div>
+        </div>
+        <div class="charts-row">
+          <div class="cc"><div class="cc-title">Real vs Meta (absoluto)</div><div class="cw"><canvas id="c-meta-abs"></canvas></div></div>
+          <div class="cc"><div class="cc-title">Tendência Diária <span class="badge-novo">novo</span></div><div class="cw"><canvas id="c-tend"></canvas></div></div>
+        </div>
+      </div>
+
+      <!-- ═══ CALENDÁRIO ═══ -->
+      <div class="page" id="page-calendario">
+        <div class="kpi-grid" id="kpi-cal"></div>
+        <div class="cc" style="margin-bottom:16px">
+          <div class="cc-title">Volume de Notas por Dia (Heatmap)</div>
+          <div class="heatmap" id="heatmap"></div>
+          <div style="display:flex;gap:7px;align-items:center;margin-top:8px;font-size:11px;color:var(--muted)">
+            <span>Menor</span>
+            <div style="width:11px;height:11px;border-radius:2px;background:var(--border)"></div>
+            <div style="width:11px;height:11px;border-radius:2px;background:rgba(0,212,255,.2)"></div>
+            <div style="width:11px;height:11px;border-radius:2px;background:rgba(0,212,255,.45)"></div>
+            <div style="width:11px;height:11px;border-radius:2px;background:rgba(0,212,255,.7)"></div>
+            <div style="width:11px;height:11px;border-radius:2px;background:var(--cyan)"></div>
+            <span>Maior</span>
+          </div>
+        </div>
+        <div class="charts-row">
+          <div class="cc"><div class="cc-title">Notas por Dia da Semana</div><div class="cw"><canvas id="c-semana"></canvas></div></div>
+          <div class="cc"><div class="cc-title">Volume Acumulado <span class="badge-novo">novo</span></div><div class="cw"><canvas id="c-acum"></canvas></div></div>
+        </div>
+      </div>
+
+      <!-- ═══ NOTAS ═══ -->
+      <div class="page" id="page-notas">
+        <div class="kpi-grid" id="kpi-notas"></div>
+        <div class="tc">
+          <div class="tc-head">
+            <h3>Notas de Serviço — PECLDTESTE</h3>
+            <input class="tbl-search" id="tbl-search" placeholder="Buscar…" oninput="filterNotasTable()" />
+          </div>
+          <div class="tw"><table id="notas-table">
+            <thead><tr>
+              <th onclick="sortNotas(0)">Nota</th>
+              <th onclick="sortNotas(1)">Num. Serviço</th>
+              <th onclick="sortNotas(2)">Superintendência</th>
+              <th onclick="sortNotas(3)">UTD</th>
+              <th onclick="sortNotas(4)">Coordenador</th>
+              <th onclick="sortNotas(5)">Grupo Serviço</th>
+              <th onclick="sortNotas(6)">Prioridade</th>
+              <th onclick="sortNotas(7)">Data Exec.</th>
+              <th onclick="sortNotas(8)">Retorno Campo</th>
+              <th onclick="sortNotas(9)">Bairro</th>
+              <th onclick="sortNotas(10)">Valor</th>
+            </tr></thead>
+            <tbody id="notas-tbody"></tbody>
+          </table></div>
+          <div class="tbl-info" id="notas-info"></div>
+        </div>
+      </div>
+
+      <!-- ═══ COORDENADORES ═══ -->
+      <div class="page" id="page-coordenadores">
+        <div class="charts-row">
+          <div class="cc"><div class="cc-title">Notas por Coordenador</div><div class="cw"><canvas id="c-coord"></canvas></div></div>
+          <div class="cc"><div class="cc-title">Retornos por Coordenador <span class="badge-novo">novo</span></div><div class="cw"><canvas id="c-coord-ret"></canvas></div></div>
+        </div>
+        <div class="tc">
+          <div class="tc-head"><h3>Resumo por Coordenador</h3></div>
+          <div class="tw"><table>
+            <thead><tr>
+              <th>Coordenador</th><th>Superintendência</th><th>UTD</th>
+              <th>Total Notas</th><th>Com Retorno</th><th>% Retorno</th><th>Valor Total</th>
+            </tr></thead>
+            <tbody id="coord-tbody"></tbody>
+          </table></div>
+        </div>
+      </div>
+
+      <!-- ═══ CONFIGURAÇÕES — SUPERINTENDÊNCIAS ═══ -->
+      <div class="page" id="page-config">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+          <div>
+            <div style="font-size:15px;font-weight:600">Mapeamento UTD → Superintendência</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px">
+              Edite a superintendência de cada UTD. O valor padrão é derivado automaticamente do campo <code>contrato</code>.
+              Alterações são salvas em <code>superintendencias.json</code> e aplicadas no próximo recarregamento.
+            </div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn" onclick="resetSupers()">Restaurar padrões</button>
+            <button class="btn-save" onclick="saveSupers()" style="padding:6px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;border:none">Salvar</button>
+          </div>
+        </div>
+
+        <div class="tc">
+          <div class="tc-head" style="border-bottom:1px solid var(--border)">
+            <div style="display:grid;grid-template-columns:1fr 220px 220px;width:100%;gap:12px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:0 3px">
+              <span>UTD</span>
+              <span>Superintendência atual</span>
+              <span>Nova Superintendência</span>
+            </div>
+          </div>
+          <div id="config-super-body" style="padding:4px 0"></div>
+        </div>
+
+        <div id="config-save-msg" style="display:none;margin-top:12px;padding:10px 14px;background:rgba(0,230,118,.1);border:1px solid rgba(0,230,118,.3);border-radius:8px;color:var(--green);font-size:13px">
+          Superintendências salvas com sucesso. Clique em ↻ Recarregar para aplicar.
+        </div>
+      </div>
+
+      <!-- ═══ RETORNO DE CAMPO ═══ -->
+      <div class="page" id="page-retorno">
+        <div class="kpi-grid" id="kpi-retorno"></div>
+        <div class="charts-row">
+          <div class="cc"><div class="cc-title">Retorno por Grupo</div><div class="cw"><canvas id="c-ret-grp"></canvas></div></div>
+          <div class="cc"><div class="cc-title">Retorno por UTD <span class="badge-novo">novo</span></div><div class="cw"><canvas id="c-ret-utd"></canvas></div></div>
+        </div>
+        <div class="tc">
+          <div class="tc-head"><h3>Top Retornos de Campo</h3></div>
+          <div class="tw"><table>
+            <thead><tr><th>Código / Descrição</th><th>Qtd</th><th>%</th></tr></thead>
+            <tbody id="ret-tbody"></tbody>
+          </table></div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<script>
+// ════════════════════════════════════════════════════════════
+// ESTADO GLOBAL
+// ════════════════════════════════════════════════════════════
+const G = { notas: [], metas: {}, calData: [] };
+const CHARTS = {};
+// Modo estático: quando hospedado no GitHub Pages (não é localhost)
+const IS_STATIC = !['localhost', '127.0.0.1'].includes(window.location.hostname);
+const PTITLES = {
+  'visao-geral':'Visão Geral', 'metas':'Metas por UTD', 'calendario':'Calendário',
+  'notas':'Notas de Serviço', 'coordenadores':'Coordenadores', 'retorno':'Retorno de Campo',
+  'config':'Configurar Superintendências'
+};
+
+// mapeamento padrão (auto-derivado), preenchido no initData
+G.supersDefault = {};
+
+// ── helpers ───────────────────────────────────────────────
+const API = p => {
+  // Modo estático (GitHub Pages): lê JSON da pasta data/
+  // Modo local (Flask): chama /api/...
+  const url = IS_STATIC
+    ? './data/' + p.replace(/^\/api\//, '') + '.json'
+    : p;
+  return fetch(url).then(r => { if (!r.ok) throw r; return r.json(); });
+};
+
+function showLoader(on, msg) {
+  document.getElementById('loader').classList.toggle('hidden', !on);
+  if (msg) document.getElementById('loader-msg').textContent = msg;
+}
+
+function shortUtd(u) { return (u||'').replace(/ ?- ?STC$/i,'').trim(); }
+function groupBy(arr, key) {
+  const m = {};
+  for (const d of arr) { const k = d[key]??''; m[k] = (m[k]||0)+1; }
+  return m;
+}
+function topN(obj, n=10) { return Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,n); }
+function fmt(n)  { return n==null?'—':Number(n).toLocaleString('pt-BR'); }
+function fmtR(n) { return n==null?'—':Number(n).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+const PALETTE = ['#00d4ff','#00e676','#ffd740','#ff5252','#b388ff','#ff9100','#40c4ff','#69f0ae','#ffff00','#ea80fc'];
+
+const COPTS = {
+  responsive:true, maintainAspectRatio:false,
+  plugins:{ legend:{ labels:{ color:'#8892a4', boxWidth:11, font:{size:11} } } },
+  scales:{
+    x:{ ticks:{ color:'#8892a4', font:{size:10} }, grid:{ color:'rgba(255,255,255,.04)' } },
+    y:{ ticks:{ color:'#8892a4', font:{size:10} }, grid:{ color:'rgba(255,255,255,.04)' } }
+  }
+};
+
+function mkChart(id, type, data, extra={}) {
+  if (CHARTS[id]) CHARTS[id].destroy();
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  CHARTS[id] = new Chart(ctx, { type, data, options: {...COPTS, ...extra} });
+}
+
+// ════════════════════════════════════════════════════════════
+// BOOTSTRAP
+// ════════════════════════════════════════════════════════════
+async function initData() {
+  showLoader(true, 'Carregando dados dos arquivos PECLD…');
+  try {
+    const [notasResp, metas, cal, files, supersMap] = await Promise.all([
+      API('/api/os'), API('/api/metas'), API('/api/calendar'), API('/api/files'),
+      API('/api/superintendencias'),
+    ]);
+    G.notas        = notasResp.records;
+    G.metas        = metas;
+    G.calData      = cal;
+    G.supersDefault = supersMap;  // UTD → Superintendência atual
+
+    const tot = files.reduce((s,f)=>s+f.rows,0);
+    document.getElementById('files-status').textContent =
+      `${files.length} arquivo(s) · ${fmt(tot)} notas`;
+
+    populateFilters();
+    renderPage(currentPage());
+    showLoader(false);
+  } catch(e) {
+    console.error(e);
+    document.getElementById('loader-msg').textContent = IS_STATIC
+      ? 'Erro ao carregar dados. Verifique se o GitHub Actions já executou e os arquivos data/*.json existem.'
+      : 'Erro ao conectar. Certifique-se de abrir via http://localhost:5000';
+  }
+}
+
+// ── Filtros ────────────────────────────────────────────────
+function populateFilters() {
+  const supers = [...new Set(G.notas.map(d=>d.Superintendencia).filter(Boolean))].sort();
+  const utds   = [...new Set(G.notas.map(d=>d.Utd).filter(Boolean))].sort();
+  const grps   = [...new Set(G.notas.map(d=>d.grupo_servico).filter(Boolean))].sort();
+
+  sel('f-super').innerHTML = opt('Todas') + supers.map(s=>`<option value="${enc(s)}">${s}</option>`).join('');
+  sel('f-utd').innerHTML   = opt('Todas') + utds.map(u=>`<option value="${enc(u)}">${shortUtd(u)}</option>`).join('');
+  sel('f-grupo').innerHTML = opt('Todos') + grps.map(g=>`<option value="${enc(g)}">${g}</option>`).join('');
+
+  const dates = G.notas.map(d=>d.data_str).filter(Boolean).sort();
+  if (dates.length) {
+    const maxDate = dates[dates.length-1];
+    const maxYear = maxDate.split('-')[0];
+    const minOfYear = dates.find(d=>d.startsWith(maxYear)) || dates[0];
+    const iniEl = sel('f-data-ini'), fimEl = sel('f-data-fim');
+    iniEl.min = fimEl.min = dates[0];
+    iniEl.max = fimEl.max = maxDate;
+    iniEl.value = minOfYear;
+    fimEl.value = maxDate;
+  }
+}
+
+function opt(label, value='') { return `<option value="${value}">${label}</option>`; }
+function sel(id) { return document.getElementById(id); }
+function enc(v) { return encodeURIComponent(v); }
+function dec(v) { return decodeURIComponent(v||''); }
+
+function onSuperChange() {
+  const superVal = dec(sel('f-super').value);
+  const utds = [...new Set(
+    G.notas.filter(d => !superVal || d.Superintendencia===superVal).map(d=>d.Utd).filter(Boolean)
+  )].sort();
+  sel('f-utd').innerHTML = opt('Todas') + utds.map(u=>`<option value="${enc(u)}">${shortUtd(u)}</option>`).join('');
+  applyFilters();
+}
+
+function getFiltered() {
+  const dataIni = sel('f-data-ini').value;
+  const dataFim = sel('f-data-fim').value;
+  const sup     = dec(sel('f-super').value);
+  const utd     = dec(sel('f-utd').value);
+  const grp     = dec(sel('f-grupo').value);
+  return G.notas.filter(d => {
+    if (dataIni && d.data_str && d.data_str < dataIni) return false;
+    if (dataFim && d.data_str && d.data_str > dataFim) return false;
+    if (sup && d.Superintendencia !== sup)             return false;
+    if (utd && d.Utd !== utd)                         return false;
+    if (grp && d.grupo_servico !== grp)               return false;
+    return true;
+  });
+}
+
+function applyFilters() {
+  renderPage(currentPage());
+}
+
+function resetFilters() {
+  const dates = G.notas.map(d=>d.data_str).filter(Boolean).sort();
+  if (dates.length) {
+    const maxDate = dates[dates.length-1];
+    const maxYear = maxDate.split('-')[0];
+    sel('f-data-ini').value = dates.find(d=>d.startsWith(maxYear)) || dates[0];
+    sel('f-data-fim').value = maxDate;
+  } else {
+    sel('f-data-ini').value = '';
+    sel('f-data-fim').value = '';
+  }
+  sel('f-super').value = '';
+  sel('f-utd').innerHTML = opt('Todas') +
+    [...new Set(G.notas.map(d=>d.Utd).filter(Boolean))].sort()
+      .map(u=>`<option value="${enc(u)}">${shortUtd(u)}</option>`).join('');
+  sel('f-utd').value   = '';
+  sel('f-grupo').value = '';
+  applyFilters();
+}
+
+// ── Navegação ─────────────────────────────────────────────
+function navigate(id, el) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  el.classList.add('active');
+  document.getElementById('page-title').textContent = PTITLES[id];
+  renderPage(id);
+}
+
+function currentPage() {
+  const p = document.querySelector('.page.active');
+  return p ? p.id.replace('page-','') : 'visao-geral';
+}
+
+function renderPage(id) {
+  if (!G.notas.length) return;
+  ({
+    'visao-geral':   renderVisaoGeral,
+    'metas':         renderMetas,
+    'calendario':    renderCalendario,
+    'notas':         renderNotas,
+    'coordenadores': renderCoordenadores,
+    'retorno':       renderRetorno,
+    'config':        renderConfig,
+  }[id] || (()=>{}))();
+}
+
+async function reloadData() {
+  showLoader(true,'Recarregando arquivos…');
+  try {
+    if (!IS_STATIC) await fetch('/api/reload', { method: 'POST' });
+    G.notas = [];
+    await initData();
+  } catch(e) { showLoader(false); }
+}
+
+// ════════════════════════════════════════════════════════════
+// HELPERS DE META (VALOR-based, Seg-Qui vs Sexta)
+// ════════════════════════════════════════════════════════════
+function getMetaUTD(utd) {
+  return G.metas[utd] || { seg_qui: 0, sexta: 0 };
+}
+
+// Calcula meta efetiva para um UTD dado o conjunto de notas filtradas
+function metaEfetiva(utd, notas) {
+  const m = getMetaUTD(utd);
+  if (!m.seg_qui && !m.sexta) return 0;
+  const dias = {};
+  notas.filter(r => r.Utd === utd && r.data_str).forEach(r => { dias[r.data_str] = r.dia_semana ?? -1; });
+  return Object.values(dias).reduce((s, dow) => {
+    if (dow === 4) return s + (m.sexta || 0);        // Sexta
+    if (dow >= 0 && dow <= 3) return s + (m.seg_qui || 0);  // Seg-Qui
+    return s;
+  }, 0);
+}
+
+// Soma VALOR real de um UTD no conjunto filtrado
+function valorReal(utd, notas) {
+  return notas.filter(r => r.Utd === utd).reduce((s,r) => s+(r.VALOR||0), 0);
+}
+
+// Meta global efetiva (todos os UTDs)
+function metaGlobal(notas) {
+  const utds = [...new Set(notas.map(r=>r.Utd).filter(Boolean))];
+  return utds.reduce((s,u) => s + metaEfetiva(u, notas), 0);
+}
+
+// ════════════════════════════════════════════════════════════
+// VISÃO GERAL
+// ════════════════════════════════════════════════════════════
+function renderVisaoGeral() {
+  const d = getFiltered();
+  if (!d.length) {
+    document.getElementById('kpi-visao').innerHTML =
+      '<div class="kpi"><div class="kpi-lbl">Sem dados</div><div class="kpi-val v-muted">—</div></div>';
+    return;
+  }
+
+  const comRet   = d.filter(r=>r.tem_retorno).length;
+  const pctRet   = ((comRet/d.length)*100).toFixed(1);
+  const valorTot = d.reduce((s,r)=>s+(r.VALOR||0),0);
+  const utdCount = [...new Set(d.map(r=>r.Utd).filter(Boolean))].length;
+  const superCount = [...new Set(d.map(r=>r.Superintendencia).filter(Boolean))].length;
+
+  const sumMeta  = metaGlobal(d);
+  const pctMeta  = sumMeta ? Math.round(valorTot/sumMeta*100) : null;
+
+  document.getElementById('kpi-visao').innerHTML = [
+    { l:'Total Notas',        v:fmt(d.length),              c:'v-cyan',   s:'no período filtrado' },
+    { l:'Valor Realizado',    v:'R$ '+fmtR(valorTot),       c:'v-green',  s:'soma VALOR' },
+    { l:'Meta Efetiva',       v:'R$ '+fmtR(sumMeta),        c:'v-yellow', s:'meta do período filtrado' },
+    { l:'% Meta (VALOR)',     v:pctMeta!=null?pctMeta+'%':'—',
+      c:pctMeta>=100?'v-green':pctMeta>=80?'v-yellow':'v-red',
+      s:`R$ ${fmtR(valorTot)} de R$ ${fmtR(sumMeta)}` },
+    { l:'UTDs ativas',        v:utdCount,                   c:'v-cyan',   s:'no período' },
+    { l:'Superintendências',  v:superCount,                 c:'v-purple', s:'ativas no período' },
+    { l:'Com Retorno Campo',  v:fmt(comRet),                c:'v-yellow', s:`${pctRet}% das notas`, novo:true },
+    { l:'Valor Médio / Nota', v:'R$ '+fmtR(valorTot/d.length), c:'v-cyan', s:'média por nota', novo:true },
+  ].map(k=>`<div class="kpi">
+    <div class="kpi-lbl">${k.l}${k.novo?` <span class="badge-novo">novo</span>`:''}</div>
+    <div class="kpi-val ${k.c}">${k.v}</div>
+    <div class="kpi-sub">${k.s}</div>
+  </div>`).join('');
+
+  // Valor por UTD vs Meta efetiva
+  const utdList = [...new Set(d.map(r=>r.Utd).filter(Boolean))].sort();
+  mkChart('c-utd-meta','bar',{
+    labels: utdList.map(shortUtd),
+    datasets:[
+      { label:'R$ Real',  data:utdList.map(u=>Math.round(valorReal(u,d))),    backgroundColor:'rgba(0,212,255,.7)', borderRadius:3 },
+      { label:'R$ Meta',  data:utdList.map(u=>Math.round(metaEfetiva(u,d))), backgroundColor:'rgba(255,215,64,.4)', borderRadius:3 },
+    ]
+  });
+
+  // Notas por Superintendência
+  const superMap = groupBy(d,'Superintendencia');
+  const superEntries = topN(superMap);
+  mkChart('c-super','bar',{
+    labels: superEntries.map(e=>e[0]),
+    datasets:[{ label:'Notas', data:superEntries.map(e=>e[1]), backgroundColor:PALETTE, borderRadius:4 }]
+  },{plugins:{legend:{display:false}}});
+
+  // Evolução por data — por valor (R$)
+  const byDate = {};
+  d.forEach(r=>{ if(r.data_str) byDate[r.data_str]=(byDate[r.data_str]||0)+(r.VALOR||0); });
+  const dates = Object.keys(byDate).sort();
+  mkChart('c-mensal','line',{
+    labels: dates,
+    datasets:[{ label:'Valor (R$)', data:dates.map(dt=>Math.round(byDate[dt]||0)), borderColor:'#00d4ff', backgroundColor:'rgba(0,212,255,.1)', fill:true, tension:.3, pointRadius:3 }]
+  },{
+    plugins:{legend:{display:false}},
+    scales:{
+      x:{ ticks:{ color:'#8892a4', font:{size:10} }, grid:{ color:'rgba(255,255,255,.04)' } },
+      y:{ ticks:{ color:'#8892a4', font:{size:10}, callback: v => 'R$ '+Number(v).toLocaleString('pt-BR') }, grid:{ color:'rgba(255,255,255,.04)' } }
+    }
+  });
+
+  // Grupo serviço — doughnut
+  const grpEntries = topN(groupBy(d,'grupo_servico'),8);
+  mkChart('c-grupo','doughnut',{
+    labels: grpEntries.map(e=>e[0]),
+    datasets:[{ data:grpEntries.map(e=>e[1]), backgroundColor:PALETTE, borderWidth:0 }]
+  },{
+    plugins:{legend:{position:'right',labels:{color:'#8892a4',boxWidth:10,font:{size:10}}}},
+    scales:{x:{display:false},y:{display:false}}
+  });
+
+  // Prioridade
+  const prEntries = topN(groupBy(d,'prioridade'));
+  mkChart('c-prior','bar',{
+    labels: prEntries.map(e=>e[0]),
+    datasets:[{ data:prEntries.map(e=>e[1]), backgroundColor:PALETTE.slice(2), borderRadius:5 }]
+  },{plugins:{legend:{display:false}}});
+}
+
+// ════════════════════════════════════════════════════════════
+// METAS  (comparação VALOR real vs meta efetiva)
+// ════════════════════════════════════════════════════════════
+function renderMetas() {
+  const d = getFiltered();
+  const utdList = [...new Set(d.map(r=>r.Utd).filter(Boolean))].sort();
+
+  // Calcula real (R$) e meta efetiva (R$) por UTD
+  const reais = utdList.map(u => Math.round(valorReal(u, d)));
+  const metas = utdList.map(u => Math.round(metaEfetiva(u, d)));
+  const pcts  = utdList.map((u,i) => metas[i] ? Math.round(reais[i]/metas[i]*100) : null);
+
+  const valid = pcts.filter(p=>p!=null);
+  const media = valid.length ? Math.round(valid.reduce((a,b)=>a+b,0)/valid.length) : null;
+  const acima = valid.filter(p=>p>=100).length;
+  const maxI  = pcts.reduce((bi,p,i)=>p!=null&&(pcts[bi]==null||p>pcts[bi])?i:bi, 0);
+  const minI  = pcts.reduce((bi,p,i)=>p!=null&&(pcts[bi]==null||p<pcts[bi])?i:bi, 0);
+
+  // Identifica tipo de dia predominante no período filtrado
+  const sextas   = d.filter(r=>r.dia_semana===4).length;
+  const segQui   = d.filter(r=>r.dia_semana>=0&&r.dia_semana<=3).length;
+  const tipoInfo = sextas>0 && segQui===0 ? 'Meta Sexta' : sextas>0 ? 'Seg-Qui + Sexta' : 'Meta Seg-Qui';
+
+  document.getElementById('kpi-metas').innerHTML = `
+    <div class="kpi"><div class="kpi-lbl">UTDs acima da meta</div><div class="kpi-val v-green">${acima}</div><div class="kpi-sub">de ${utdList.length} com meta</div></div>
+    <div class="kpi"><div class="kpi-lbl">Média % Meta</div><div class="kpi-val v-cyan">${media!=null?media+'%':'—'}</div><div class="kpi-sub">base VALOR</div></div>
+    <div class="kpi"><div class="kpi-lbl">Melhor UTD</div><div class="kpi-val v-green" style="font-size:14px">${shortUtd(utdList[maxI]||'—')}</div><div class="kpi-sub">${pcts[maxI]!=null?pcts[maxI]+'%':'—'}</div></div>
+    <div class="kpi"><div class="kpi-lbl">Pior UTD</div><div class="kpi-val v-red" style="font-size:14px">${shortUtd(utdList[minI]||'—')}</div><div class="kpi-sub">${pcts[minI]!=null?pcts[minI]+'%':'—'}</div></div>
+    <div class="kpi"><div class="kpi-lbl">Período</div><div class="kpi-val v-purple" style="font-size:14px">${tipoInfo}</div><div class="kpi-sub">tipo de dia ativo</div></div>
+  `;
+
+  document.getElementById('meta-bars').innerHTML = utdList.map((u,i)=>{
+    const pct=pcts[i], disp=pct??0;
+    const col=disp>=100?'#00e676':disp>=80?'#ffd740':'#ff5252';
+    const realStr = 'R$ '+fmtR(reais[i]);
+    const metaStr = metas[i] ? 'R$ '+fmtR(metas[i]) : 'sem meta';
+    return `<div class="meta-row">
+      <div class="meta-lbl" title="${u}">${shortUtd(u)}</div>
+      <div class="meta-bg" title="${realStr} de ${metaStr}"><div class="meta-fill" style="width:${Math.min(disp,100)}%;background:${col}"></div></div>
+      <div class="meta-pct" style="color:${col}">${pct!=null?pct+'%':'—'}</div>
+    </div>`;
+  }).join('');
+
+  mkChart('c-meta-abs','bar',{
+    labels: utdList.map(shortUtd),
+    datasets:[
+      { label:'R$ Real', data:reais, backgroundColor:'rgba(0,212,255,.7)', borderRadius:3 },
+      { label:'R$ Meta', data:metas, backgroundColor:'rgba(255,215,64,.4)', borderRadius:3 },
+    ]
+  });
+
+  // Tendência acumulada de VALOR
+  const byDate = {};
+  d.forEach(r=>{ if(r.data_str) byDate[r.data_str]=(byDate[r.data_str]||0)+(r.VALOR||0); });
+  const dates = Object.keys(byDate).sort();
+  let acum=0;
+  mkChart('c-tend','line',{
+    labels: dates,
+    datasets:[{ label:'VALOR Acumulado', data:dates.map(dt=>{ acum+=byDate[dt]; return Math.round(acum); }),
+      borderColor:'#00e676', backgroundColor:'rgba(0,230,118,.08)', fill:true, tension:.3, pointRadius:2 }]
+  },{plugins:{legend:{display:false}}});
+}
+
+// ════════════════════════════════════════════════════════════
+// CALENDÁRIO
+// ════════════════════════════════════════════════════════════
+function renderCalendario() {
+  const d = getFiltered();
+  const byDate = {};
+  d.forEach(r=>{ if(r.data_str) byDate[r.data_str]=(byDate[r.data_str]||0)+1; });
+  const vals = Object.values(byDate);
+  const maxV = vals.length ? Math.max(...vals) : 1;
+
+  const hmEl = document.getElementById('heatmap');
+  hmEl.innerHTML = '';
+  G.calData.forEach(({data_str,total})=>{
+    const pct=total/maxV;
+    const lvl=pct<=0?0:pct<.25?1:pct<.5?2:pct<.75?3:4;
+    const c=document.createElement('div');
+    c.className=`hc h${lvl}`; c.title=`${data_str}: ${total} notas`;
+    hmEl.appendChild(c);
+  });
+
+  const dates = Object.keys(byDate).sort();
+  const totalDias = dates.length;
+  const mediaD = totalDias ? Math.round(d.length/totalDias) : 0;
+  const maxIdx = vals.indexOf(maxV);
+
+  document.getElementById('kpi-cal').innerHTML = `
+    <div class="kpi"><div class="kpi-lbl">Dias com Notas</div><div class="kpi-val v-cyan">${totalDias}</div><div class="kpi-sub">no período filtrado</div></div>
+    <div class="kpi"><div class="kpi-lbl">Total Notas</div><div class="kpi-val v-cyan">${fmt(d.length)}</div></div>
+    <div class="kpi"><div class="kpi-lbl">Média / Dia</div><div class="kpi-val v-yellow">${mediaD}</div><div class="kpi-sub">notas por dia ativo</div></div>
+    <div class="kpi"><div class="kpi-lbl">Pico Diário</div><div class="kpi-val v-green">${fmt(maxV)}</div><div class="kpi-sub">${dates[maxIdx]||'—'}</div></div>
+  `;
+
+  const DIAS = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
+  const bySemana = new Array(7).fill(0);
+  d.forEach(r=>{ if(r.dia_semana>=0) bySemana[r.dia_semana]++; });
+  mkChart('c-semana','bar',{
+    labels: DIAS,
+    datasets:[{ data:bySemana, backgroundColor:'rgba(0,212,255,.7)', borderRadius:4 }]
+  },{plugins:{legend:{display:false}}});
+
+  let acc=0;
+  mkChart('c-acum','line',{
+    labels: dates,
+    datasets:[{ label:'Acumulado', data:dates.map(dt=>{ acc+=byDate[dt]; return acc; }),
+      borderColor:'#00d4ff', backgroundColor:'rgba(0,212,255,.1)', fill:true, tension:.3, pointRadius:2 }]
+  },{plugins:{legend:{display:false}}});
+}
+
+// ════════════════════════════════════════════════════════════
+// NOTAS DE SERVIÇO — tabela
+// ════════════════════════════════════════════════════════════
+let _notasRows = [], _sortCol = 7, _sortAsc = false;
+const NOTAS_KEYS = ['Nota','num_servico','Superintendencia','Utd','Coordenador','grupo_servico','prioridade','data_str','Retorno_de_Campo','Bairro','VALOR'];
+
+function renderNotas() {
+  const d = getFiltered();
+  _notasRows = [...d];
+  _sortCol = 7; _sortAsc = false;
+  sortNotasBy();
+
+  const comRet = d.filter(r=>r.tem_retorno).length;
+  document.getElementById('kpi-notas').innerHTML = `
+    <div class="kpi"><div class="kpi-lbl">Total Notas</div><div class="kpi-val v-cyan">${fmt(d.length)}</div></div>
+    <div class="kpi"><div class="kpi-lbl">Com Retorno</div><div class="kpi-val v-yellow">${fmt(comRet)}</div><div class="kpi-sub">${((comRet/d.length||0)*100).toFixed(1)}%</div></div>
+    <div class="kpi"><div class="kpi-lbl">Sem Retorno</div><div class="kpi-val v-green">${fmt(d.length-comRet)}</div></div>
+    <div class="kpi"><div class="kpi-lbl">Valor Total</div><div class="kpi-val v-purple">R$ ${fmtR(d.reduce((s,r)=>s+(r.VALOR||0),0))}</div></div>
+  `;
+}
+
+function sortNotas(col) {
+  if (_sortCol===col) _sortAsc=!_sortAsc; else { _sortCol=col; _sortAsc=true; }
+  sortNotasBy();
+}
+function sortNotasBy() {
+  const k = NOTAS_KEYS[_sortCol];
+  _notasRows.sort((a,b)=>{
+    const va=a[k]??'', vb=b[k]??'';
+    return _sortAsc ? (va>vb?1:va<vb?-1:0) : (va<vb?1:va>vb?-1:0);
+  });
+  renderNotasTbody(_notasRows);
+}
+
+function filterNotasTable() {
+  const q = document.getElementById('tbl-search').value.toLowerCase();
+  const filtered = q
+    ? _notasRows.filter(r=>NOTAS_KEYS.some(k=>String(r[k]??'').toLowerCase().includes(q)))
+    : _notasRows;
+  renderNotasTbody(filtered);
+}
+
+function renderNotasTbody(rows) {
+  const limit = 200;
+  document.getElementById('notas-tbody').innerHTML = rows.slice(0,limit).map(r=>{
+    const ret = r.Retorno_de_Campo||'';
+    const retShort = ret.length>28 ? ret.slice(0,28)+'…' : ret;
+    return `<tr>
+      <td>${r.Nota||''}</td>
+      <td>${r.num_servico||''}</td>
+      <td><span class="pill pc">${r.Superintendencia||'—'}</span></td>
+      <td title="${r.Utd||''}">${shortUtd(r.Utd||'')}</td>
+      <td>${r.Coordenador||''}</td>
+      <td>${r.grupo_servico||''}</td>
+      <td>${r.prioridade||''}</td>
+      <td>${r.data_str||''}</td>
+      <td title="${ret}"><span class="pill ${r.tem_retorno?'py':'pm'}">${r.tem_retorno?retShort:'Sem retorno'}</span></td>
+      <td>${r.Bairro||''}</td>
+      <td>${r.VALOR!=null?'R$ '+fmtR(r.VALOR):''}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('notas-info').textContent =
+    `Exibindo ${Math.min(limit,rows.length)} de ${fmt(rows.length)} registros`;
+}
+
+// ════════════════════════════════════════════════════════════
+// COORDENADORES
+// ════════════════════════════════════════════════════════════
+function renderCoordenadores() {
+  const d = getFiltered();
+  const byCoord = {};
+  d.forEach(r=>{
+    const c = r.Coordenador||'N/D';
+    if (!byCoord[c]) byCoord[c] = { utd:r.Utd||'', super:r.Superintendencia||'', total:0, retorno:0, valor:0 };
+    byCoord[c].total++;
+    if (r.tem_retorno) byCoord[c].retorno++;
+    byCoord[c].valor += r.VALOR||0;
+  });
+
+  const rows = Object.entries(byCoord)
+    .map(([c,v])=>({c,...v, pctRet:v.total?((v.retorno/v.total)*100).toFixed(1):0}))
+    .sort((a,b)=>b.total-a.total);
+
+  const top = rows.slice(0,12);
+  mkChart('c-coord','bar',{
+    labels: top.map(r=>r.c.split(' ')[0]),
+    datasets:[{ label:'Notas', data:top.map(r=>r.total), backgroundColor:'rgba(0,212,255,.7)', borderRadius:3 }]
+  },{plugins:{legend:{display:false}}, indexAxis:'y'});
+
+  mkChart('c-coord-ret','bar',{
+    labels: top.map(r=>r.c.split(' ')[0]),
+    datasets:[{ label:'Com retorno', data:top.map(r=>r.retorno), backgroundColor:'rgba(255,215,64,.7)', borderRadius:3 }]
+  },{plugins:{legend:{display:false}}, indexAxis:'y'});
+
+  document.getElementById('coord-tbody').innerHTML = rows.map(r=>`
+    <tr>
+      <td>${r.c}</td>
+      <td><span class="pill pc">${r.super||'—'}</span></td>
+      <td title="${r.utd}">${shortUtd(r.utd)}</td>
+      <td>${fmt(r.total)}</td>
+      <td>${fmt(r.retorno)}</td>
+      <td><span class="pill ${parseFloat(r.pctRet)<=20?'pg':parseFloat(r.pctRet)<=40?'py':'pr'}">${r.pctRet}%</span></td>
+      <td>R$ ${fmtR(r.valor)}</td>
+    </tr>`).join('');
+}
+
+// ════════════════════════════════════════════════════════════
+// RETORNO DE CAMPO
+// ════════════════════════════════════════════════════════════
+function renderRetorno() {
+  const d = getFiltered();
+  const comRet = d.filter(r=>r.tem_retorno);
+  const byGrp  = groupBy(comRet,'Grupo_Retorno_de_Campo');
+  const byUtd  = groupBy(comRet,'Utd');
+  const byRet  = groupBy(comRet,'Retorno_de_Campo');
+  const pctRet = d.length ? ((comRet.length/d.length)*100).toFixed(1) : 0;
+  const topGrp = topN(byGrp)[0]||['—',0];
+
+  document.getElementById('kpi-retorno').innerHTML = `
+    <div class="kpi"><div class="kpi-lbl">Total Retornos</div><div class="kpi-val v-yellow">${fmt(comRet.length)}</div><div class="kpi-sub">${pctRet}% das notas</div></div>
+    <div class="kpi"><div class="kpi-lbl">Sem Retorno</div><div class="kpi-val v-green">${fmt(d.length-comRet.length)}</div></div>
+    <div class="kpi"><div class="kpi-lbl">Grupo mais freq.</div><div class="kpi-val v-purple" style="font-size:13px">${(topGrp[0]||'—').replace(/^\d+-/,'')}</div><div class="kpi-sub">${fmt(topGrp[1])} ocorrências</div></div>
+    <div class="kpi"><div class="kpi-lbl">% com Retorno <span class="badge-novo">novo</span></div><div class="kpi-val v-yellow">${pctRet}%</div></div>
+  `;
+
+  const grpEntries = topN(byGrp,8);
+  mkChart('c-ret-grp','doughnut',{
+    labels: grpEntries.map(e=>(e[0]||'S/D').replace(/^\d+-/,'').slice(0,25)),
+    datasets:[{ data:grpEntries.map(e=>e[1]), backgroundColor:PALETTE, borderWidth:0 }]
+  },{
+    plugins:{legend:{position:'right',labels:{color:'#8892a4',boxWidth:10,font:{size:10}}}},
+    scales:{x:{display:false},y:{display:false}}
+  });
+
+  const utdList = Object.keys(byUtd).filter(Boolean).sort();
+  mkChart('c-ret-utd','bar',{
+    labels: utdList.map(shortUtd),
+    datasets:[{ label:'Retornos', data:utdList.map(u=>byUtd[u]||0), backgroundColor:'rgba(255,215,64,.7)', borderRadius:3 }]
+  },{plugins:{legend:{display:false}}});
+
+  document.getElementById('ret-tbody').innerHTML = topN(byRet,20).map(([ret,cnt])=>`
+    <tr>
+      <td title="${ret}">${ret||'(em branco)'}</td>
+      <td>${fmt(cnt)}</td>
+      <td>${comRet.length?((cnt/comRet.length)*100).toFixed(1)+'%':'—'}</td>
+    </tr>`).join('');
+}
+
+// ════════════════════════════════════════════════════════════
+// MODAL DE METAS
+// ════════════════════════════════════════════════════════════
+function openMetasModal() {
+  const d = getFiltered();
+  const utds = [...new Set(d.map(r=>r.Utd).filter(Boolean))].sort();
+  document.getElementById('modal-metas-body').innerHTML = utds.map(u=>{
+    const m = G.metas[u] || { seg_qui: 0, sexta: 0 };
+    return `<div class="modal-row">
+      <label title="${u}">${shortUtd(u)}</label>
+      <input type="number" min="0" data-utd="${u}" data-col="seg_qui" value="${m.seg_qui||0}" />
+      <input type="number" min="0" data-utd="${u}" data-col="sexta"   value="${m.sexta||0}" />
+    </div>`;
+  }).join('');
+  document.getElementById('modal-metas').classList.remove('hidden');
+}
+function closeModal() { document.getElementById('modal-metas').classList.add('hidden'); }
+
+async function saveMetas() {
+  document.querySelectorAll('#modal-metas-body input[data-utd]').forEach(inp=>{
+    const u = inp.dataset.utd, col = inp.dataset.col;
+    if (!G.metas[u]) G.metas[u] = { seg_qui: 0, sexta: 0 };
+    G.metas[u][col] = parseInt(inp.value)||0;
+  });
+  if (!IS_STATIC) {
+    try { await fetch('/api/metas',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(G.metas)}); }
+    catch(e) { console.warn(e); }
+  }
+  closeModal();
+  renderPage(currentPage());
+}
+
+// ════════════════════════════════════════════════════════════
+// CONFIGURAR SUPERINTENDÊNCIAS
+// ════════════════════════════════════════════════════════════
+function renderConfig() {
+  const utds   = Object.keys(G.supersDefault).sort();
+  const supers = [...new Set(Object.values(G.supersDefault).filter(Boolean))].sort();
+
+  document.getElementById('config-save-msg').style.display = 'none';
+  document.getElementById('config-super-body').innerHTML = utds.map(utd => {
+    const atual = G.supersDefault[utd] || '';
+    // opções do datalist
+    const opts = supers.map(s => `<option value="${s}">`).join('');
+    return `<div class="cfg-row">
+      <div class="cfg-utd" title="${utd}">${utd}</div>
+      <div class="cfg-atual"><span class="pill pc" style="font-size:11px">${atual||'—'}</span></div>
+      <div>
+        <input
+          list="super-list"
+          class="cfg-input"
+          data-utd="${utd}"
+          data-original="${atual}"
+          value="${atual}"
+          placeholder="Ex: Centro"
+          oninput="this.classList.toggle('changed', this.value!==this.dataset.original)"
+        />
+      </div>
+    </div>`;
+  }).join('');
+
+  // datalist compartilhado para autocomplete
+  let dl = document.getElementById('super-list');
+  if (!dl) { dl = document.createElement('datalist'); dl.id='super-list'; document.body.appendChild(dl); }
+  dl.innerHTML = supers.map(s=>`<option value="${s}">`).join('');
+}
+
+async function saveSupers() {
+  const inputs = document.querySelectorAll('#config-super-body input[data-utd]');
+  const payload = {};
+  inputs.forEach(inp => { payload[inp.dataset.utd] = inp.value.trim(); });
+
+  if (IS_STATIC) {
+    // Modo estático: salva apenas em memória (não persiste no servidor)
+    G.supersDefault = { ...G.supersDefault, ...payload };
+    inputs.forEach(inp => { inp.dataset.original = inp.value; inp.classList.remove('changed'); });
+    document.getElementById('config-save-msg').style.display = 'block';
+    return;
+  }
+
+  try {
+    await fetch('/api/superintendencias', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    G.supersDefault = { ...G.supersDefault, ...payload };
+    inputs.forEach(inp => {
+      inp.dataset.original = inp.value;
+      inp.classList.remove('changed');
+    });
+    document.getElementById('config-save-msg').style.display = 'block';
+  } catch(e) {
+    alert('Erro ao salvar. Verifique se o servidor está rodando.');
+  }
+}
+
+async function resetSupers() {
+  if (!confirm('Restaurar todos os valores padrão derivados do contrato?')) return;
+  try {
+    if (!IS_STATIC) {
+      await fetch('/api/superintendencias', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+    }
+    G.supersDefault = await API('/api/superintendencias');
+    renderConfig();
+    document.getElementById('config-save-msg').style.display = 'none';
+  } catch(e) {
+    alert('Erro ao restaurar.');
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// ATUALIZAR DADOS
+// ════════════════════════════════════════════════════════════
+async function atualizarDados() {
+  const btn = document.getElementById('btn-atualizar');
+
+  if (IS_STATIC) {
+    // No GitHub Pages, o usuário deve disparar manualmente o workflow
+    btn.disabled = true;
+    btn.textContent = '⏳ Abrindo GitHub…';
+    // Abre a aba de Actions do repositório
+    const repoPath = window.location.pathname.replace(/\/[^/]*$/, '');
+    window.open('https://github.com' + repoPath + '/actions', '_blank');
+    setTimeout(() => { btn.textContent = '⬇ Atualizar Dados'; btn.disabled = false; }, 2000);
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Abrindo…';
+  try {
+    const resp = await fetch('/api/atualizar-dados', { method: 'POST' });
+    let data;
+    try { data = await resp.json(); } catch(_) { data = {}; }
+    if (resp.ok && data.status === 'started') {
+      btn.textContent = '✔ Janela aberta';
+      setTimeout(() => { btn.textContent = '⬇ Atualizar Dados'; btn.disabled = false; }, 3000);
+    } else if (resp.status === 404) {
+      alert('Endpoint não encontrado.\nReinicie o servidor (feche e abra novamente) para aplicar as atualizações.');
+      btn.textContent = '⬇ Atualizar Dados';
+      btn.disabled = false;
+    } else {
+      alert('Erro: ' + (data.message || `HTTP ${resp.status}`));
+      btn.textContent = '⬇ Atualizar Dados';
+      btn.disabled = false;
+    }
+  } catch(e) {
+    alert('Erro de conexão. Verifique se o servidor está rodando em http://localhost:5000');
+    btn.textContent = '⬇ Atualizar Dados';
+    btn.disabled = false;
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', initData);
+</script>
+</body>
+</html>
