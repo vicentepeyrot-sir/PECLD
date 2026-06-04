@@ -19,7 +19,6 @@ import logging
 from datetime import datetime
 
 import pandas as pd
-import psutil
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -396,59 +395,87 @@ def consulta_servico_exec(driver, data_inicio=None, data_fim=None):
     except Exception:
         pass
 
+    # Aguarda explicitamente o alerta (sem resultados) OU o botão CSV aparecer.
+    # Em headless o alert pode demorar mais que no modo normal.
+    try:
+        WebDriverWait(driver, 20).until(EC.alert_is_present())
+        driver.switch_to.alert.accept()
+        logger.warning("Sem resultados de serviços executados para o período informado.")
+        time.sleep(3)
+        # Volta ao frame para poder clicar em "Voltar"
+        try:
+            driver.switch_to.default_content()
+            driver.switch_to.frame(1)
+        except Exception:
+            pass
+        try:
+            driver.find_element(By.XPATH, "//html/body/form[4]/div[3]/input").click()
+        except Exception:
+            pass
+        logger.info("### Download de Notas EXECUTADAS finalizado (sem resultados) ###")
+        return
+    except TimeoutException:
+        pass  # Sem alerta = há resultados, continua
+
     time.sleep(5)
 
-    # Re-estabelece contexto do iframe antes de buscar o botão de exportar
-    # (em modo headless o iframe pode ser perdido após o submit)
-    try:
-        driver.switch_to.default_content()
-        driver.switch_to.frame(1)
-    except Exception:
-        pass
+    # Re-estabelece o frame onde os resultados são exibidos.
+    # Tenta frame(1); se não existir, permanece no contexto atual.
+    for tentativa in range(3):
+        try:
+            driver.switch_to.default_content()
+            driver.switch_to.frame(1)
+            break
+        except Exception:
+            time.sleep(2)
 
     time.sleep(3)
 
-    # Salva screenshot para diagnóstico caso o botão não seja encontrado
-    screenshot_path = os.path.join(config.dir_temp, "pagina_resultado.png")
+    # Screenshot + HTML para diagnóstico (disponível como artefato se falhar)
     try:
-        driver.save_screenshot(screenshot_path)
-        logger.info(f"Screenshot salvo: {screenshot_path}")
+        driver.save_screenshot(os.path.join(config.dir_temp, "pagina_resultado.png"))
     except Exception:
         pass
 
-    # Tenta localizar o botão CSV/Excel com vários seletores
+    # Tenta localizar o botão de exportar com múltiplos seletores.
+    # Inclui fallback no default_content caso o botão esteja fora do iframe.
     CSV_SELECTORS = [
         (By.XPATH, "//*[contains(text(), 'CSV/Excel')]"),
-        (By.XPATH, "//*[contains(text(), 'CSV')]"),
-        (By.XPATH, "//button[contains(@onclick, 'csv')]"),
+        (By.XPATH, "//*[contains(translate(text(),'csvexel','CSVEXEL'), 'CSV')]"),
         (By.XPATH, "//a[contains(@href, 'csv')]"),
+        (By.XPATH, "//button[contains(@onclick, 'csv')]"),
         (By.XPATH, "//input[contains(@value, 'CSV')]"),
+        (By.XPATH, '//*[@id="form"]/div[2]/a/button'),
     ]
 
     btn_csv = None
-    for by, selector in CSV_SELECTORS:
-        try:
-            btn_csv = WebDriverWait(driver, 10).until(
-                EC.element_to_be_clickable((by, selector))
-            )
-            logger.info(f"Botão CSV encontrado com seletor: {selector}")
+    for contexto in ("frame", "default"):
+        if contexto == "default":
+            try:
+                driver.switch_to.default_content()
+            except Exception:
+                pass
+        for by, selector in CSV_SELECTORS:
+            try:
+                btn_csv = WebDriverWait(driver, 8).until(
+                    EC.element_to_be_clickable((by, selector))
+                )
+                logger.info(f"Botão CSV encontrado ({contexto}): {selector}")
+                break
+            except (TimeoutException, Exception):
+                continue
+        if btn_csv:
             break
-        except TimeoutException:
-            continue
-        except Exception:
-            continue
 
     if btn_csv is None:
-        page_source_path = os.path.join(config.dir_temp, "pagina_resultado.html")
         try:
-            with open(page_source_path, "w", encoding="utf-8") as f:
+            with open(os.path.join(config.dir_temp, "pagina_resultado.html"), "w", encoding="utf-8") as f:
                 f.write(driver.page_source)
-            logger.error(f"HTML da página salvo para diagnóstico: {page_source_path}")
         except Exception:
             pass
         raise RuntimeError(
-            "Botão CSV/Excel não encontrado após a consulta. "
-            "Verifique pagina_resultado.png e pagina_resultado.html na pasta TEMP/"
+            "Botão CSV/Excel não encontrado. "
+            "Verifique TEMP/pagina_resultado.png no artefato de diagnóstico."
         )
 
     btn_csv.click()
