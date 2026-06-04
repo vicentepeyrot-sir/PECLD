@@ -115,6 +115,12 @@ jobs:
       - name: Gerar arquivos JSON estáticos
         run: python generate_static.py
 
+      # ── 8c. Upload do XLSX para o Google Drive compartilhado ────────────────
+      - name: Upload para Google Drive
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+        run: python upload_to_drive.py
+
       # ── 9. Commit e push dos dados atualizados ───────────────────────────────
       - name: Commit e push
         run: |
