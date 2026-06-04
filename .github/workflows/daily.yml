@@ -4,23 +4,14 @@ on:
   schedule:
     # Roda todos os dias às 22:00 horário de Brasília (UTC-3 = 01:00 UTC do dia seguinte)
     - cron: '0 1 * * *'
-  # Permite disparo manual pelo botão "Run workflow" na aba Actions do GitHub
+  # Permite disparo manual pelo botão do site ou pela aba Actions do GitHub
   workflow_dispatch:
-    inputs:
-      desde:
-        description: 'Data início (YYYY-MM-DD). Vazio = automático'
-        required: false
-        default: ''
-      ate:
-        description: 'Data fim   (YYYY-MM-DD). Vazio = hoje'
-        required: false
-        default: ''
 
 jobs:
   atualizar:
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # permite commit/push no repositório
+      contents: write
 
     steps:
       # ── 1. Checkout ──────────────────────────────────────────────────────────
@@ -36,92 +27,22 @@ jobs:
           python-version: '3.11'
           cache: 'pip'
 
-      - name: Instalar dependências Python
+      - name: Instalar dependências
         run: pip install -r requirements.txt
 
-      # ── 3. Chrome (necessário para o Selenium) ───────────────────────────────
-      - name: Setup Google Chrome
-        uses: browser-actions/setup-chrome@v1
-
-      # ── 4. Diretórios ────────────────────────────────────────────────────────
-      - name: Criar diretórios TEMP e data
-        run: mkdir -p TEMP data
-
-      # ── 5. Determinar período de download ────────────────────────────────────
-      - name: Calcular período de download
-        id: periodo
-        run: |
-          python - <<'PYEOF'
-          import os, sys
-          from datetime import date, timedelta
-
-          # Entrada manual via workflow_dispatch
-          desde_input = "${{ github.event.inputs.desde }}".strip()
-          ate_input   = "${{ github.event.inputs.ate }}".strip()
-
-          hoje = date.today()
-
-          if desde_input:
-              inicio = desde_input
-          elif os.path.exists("data/dados_pecld.xlsx"):
-              # Atualização incremental: baixa os últimos 7 dias para capturar correções
-              inicio = (hoje - timedelta(days=7)).isoformat()
-          else:
-              # Primeiro download: ano inteiro
-              inicio = date(hoje.year, 1, 1).isoformat()
-
-          fim = ate_input if ate_input else hoje.isoformat()
-
-          print(f"Período: {inicio} → {fim}")
-
-          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write(f"inicio={inicio}\n")
-              f.write(f"fim={fim}\n")
-          PYEOF
-
-      # ── 6. Download das notas do portal GPM ──────────────────────────────────
-      - name: Download notas do GPM
+      # ── 3. Baixar XLSX da pasta do Google Drive ──────────────────────────────
+      - name: Baixar arquivos do Google Drive
         env:
-          GPM_USER:     ${{ secrets.GPM_USER }}
-          GPM_PASSWORD: ${{ secrets.GPM_PASSWORD }}
-          GITHUB_ACTIONS: "true"
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
         run: |
-          python main.py \
-            --desde ${{ steps.periodo.outputs.inicio }} \
-            --ate   ${{ steps.periodo.outputs.fim }}
+          mkdir -p data
+          python download_from_drive.py
 
-      # ── 6b. Salvar artefatos de diagnóstico se o download falhar ────────────
-      - name: Upload artefatos de diagnóstico (em caso de falha)
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: diagnostico-selenium
-          path: TEMP/
-          if-no-files-found: ignore
-          retention-days: 3
-
-      # ── 7. Processar CSVs e salvar XLSX acumulado ────────────────────────────
-      - name: Processar e salvar dados (data/dados_pecld.xlsx)
-        run: |
-          python - <<'PYEOF'
-          from sheets_uploader import enviar_para_github
-          from datetime import date
-          inicio = date.fromisoformat("${{ steps.periodo.outputs.inicio }}")
-          fim    = date.fromisoformat("${{ steps.periodo.outputs.fim }}")
-          enviar_para_github(data_inicio=inicio, data_fim=fim)
-          PYEOF
-
-      # ── 8. Gerar JSON estático para GitHub Pages ─────────────────────────────
+      # ── 4. Gerar JSON estático para o GitHub Pages ───────────────────────────
       - name: Gerar arquivos JSON estáticos
         run: python generate_static.py
 
-      # ── 8c. Upload do XLSX para o Google Drive compartilhado ────────────────
-      - name: Upload para Google Drive
-        env:
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-        run: python upload_to_drive.py
-
-      # ── 9. Commit e push dos dados atualizados ───────────────────────────────
+      # ── 5. Commit e push ─────────────────────────────────────────────────────
       - name: Commit e push
         run: |
           git config user.name  "github-actions[bot]"
